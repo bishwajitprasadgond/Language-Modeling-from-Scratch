@@ -231,7 +231,8 @@ svg.flow .grp-lbl{font-size:10px;fill:var(--ink-mute);letter-spacing:.08em;text-
 .couts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
 .cout{border:1px solid var(--rule-soft);background:var(--bg-surface);padding:8px 10px}
 .cout .ck{font-family:var(--font-mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-mute)}
-.cout .cv{font-family:var(--font-display);font-size:1.7rem;line-height:1.1;color:var(--ink)}
+.cout{min-width:0}
+.cout .cv{font-family:var(--font-display);font-size:1.7rem;line-height:1.1;color:var(--ink);overflow-wrap:anywhere;word-break:break-word}
 .cout .cn{font-size:.72rem;color:var(--ink-soft);line-height:1.3}
 .cout.good .cv{color:var(--good)}.cout.bad .cv{color:var(--crit)}.cout.warn .cv{color:var(--warn)}
 .cextra{font-size:.9rem}
@@ -2113,7 +2114,7 @@ assert h100_bytes_per_sec == 3.35e12</code></pre>
 </ul>
 <p>Compare the two ratios directly. The <b>accelerator intensity</b> is the work the hardware can do per byte moved, and the <b>arithmetic intensity</b> is the work the computation does per byte moved:</p>
 <p>\[ I_{\text{accel}}=\frac{\text{FLOP/s}}{\text{bytes/s}}=\frac{989.5\times10^{12}}{3.35\times10^{12}}\approx 295\ \text{FLOP/byte}, \qquad I_{\text{arith}}=\frac{\text{FLOPs}}{\text{bytes}}. \]</p>
-<p>Memory-bound when \(I_{\text{arith}}<I_{\text{accel}}\); compute-bound otherwise. (Since both compare times, the two tests are equivalent.)</p>
+<p>Memory-bound when \(I_{\text{arith}}\lt I_{\text{accel}}\); compute-bound otherwise. (Since both compare times, the two tests are equivalent.)</p>
 
 <div id="l02-flow-cost"></div>
 <script>(function(){
@@ -2135,7 +2136,7 @@ n = 1024 * 1024
 bytes = (2 * n) + (2 * n)        # 4n bytes  (= 4,194,304)
 flops = n                        # n comparisons
 arithmetic_intensity = flops / bytes      # 1/4 FLOP/byte
-assert arithmetic_intensity < h100_accelerator_intensity    # memory-bound
+assert arithmetic_intensity &lt; h100_accelerator_intensity    # memory-bound
 
 # GeLU: GELU(x) = 0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3)))
 flops = 20 * n                   # an estimate: tanh can be approximated in various ways
@@ -2311,7 +2312,7 @@ assert num_parameters == (D * D) * L          # 192 for D=8, L=3: no biases</cod
             for p in group["params"]:
                 state = self.state[p]                    # optimizer state for this parameter
                 grad = p.grad.data
-                # Get squared gradients g2 = sum_{i<t} g_i^2
+                # Get squared gradients g2 = sum_{i&lt;t} g_i^2
                 g2 = state.get("g2", torch.zeros_like(grad))
                 # Update optimizer state
                 g2 += torch.square(grad)
@@ -3301,10 +3302,10 @@ compute:function(v){
 <p>Most models do not touch the attention heads much, with a few exceptions. The main themes: <b>GQA / MQA</b> reduce the number of key/value heads to save inference cost; <b>sparse or sliding-window attention</b> (GPT-3's sparse layers, GPT-4 and Mistral, Gemma 4) restricts the attention pattern to save compute; and "exotic" SSM hybrids (Jamba, Falcon 3, Qwen 3.5) are for the next lecture.</p>
 
 <h3 id="l03-cost">11.1 What does attention cost?</h3>
-<p>Notation from the slides: \(d\) hidden dim, \(b\) batch, \(n\) sequence length (assumed \(n<d\)), \(h\) heads, \(k=d/h\) head dim.</p>
+<p>Notation from the slides: \(d\) hidden dim, \(b\) batch, \(n\) sequence length (assumed \(n\lt d\)), \(h\) heads, \(k=d/h\) head dim.</p>
 <div class="callout key"><b>Prefill (all tokens at once)</b><p>Total arithmetic is \(O(bnd^2)\) and total memory accesses are \(bnd+bhn^2+d^2\) (the terms are \(X\), the softmax matrix, and the projections). The arithmetic intensity, compute divided by memory, is \(O\big((1/k+1/(bn))^{-1}\big)\): high, so the GPU stays busy.</p></div>
 <details class="more"><summary>Exact counts behind the big-O (for the calculator below)</summary>
-<p>Intensity \(I=\dfrac{bnd^2}{bnd+bhn^2+d^2}\). Inverting, \(1/I=\dfrac1d+\dfrac{hn}{d^2}+\dfrac1{bn}\). With \(h=d/k\), \(hn/d^2=n/(kd)\). So for \(n<d\) the \(1/k\) term dominates, which is the slide's \(O\)-form. Longer contexts make the \(bhn^2\) softmax traffic grow quadratically, so intensity falls as \(n\) grows.</p></details>
+<p>Intensity \(I=\dfrac{bnd^2}{bnd+bhn^2+d^2}\). Inverting, \(1/I=\dfrac1d+\dfrac{hn}{d^2}+\dfrac1{bn}\). With \(h=d/k\), \(hn/d^2=n/(kd)\). So for \(n\lt d\) the \(1/k\) term dominates, which is the slide's \(O\)-form. Longer contexts make the \(bhn^2\) softmax traffic grow quadratically, so intensity falls as \(n\) grows.</p></details>
 <div id="l03-prefill"></div>
 <script>
 (function(){
@@ -3349,7 +3350,7 @@ steps:[0,1,2,3].map(function(i){
 
 <h3 id="l03-mqa">11.3 MQA and GQA: fewer key/value heads</h3>
 <p><b>Multi-query attention (MQA; Shazeer 2019)</b>: keep many query heads, but only <b>one</b> key head and one value head shared by all of them. The KV cache, and the memory read per decoding step, shrink by a factor of \(h\). Total memory access becomes \(bnd+bn^2k+nd^2\) and intensity \(O\big((1/d+n/(dh)+1/b)^{-1}\big)\): the attention-read term is \(h\) times smaller than in MHA.</p>
-<p><b>Grouped-query attention (GQA; Ainslie et al. 2023)</b> interpolates: \(g\) KV heads with \(1<g<h\). It is a simple knob for expressiveness (key-query ratio) versus inference efficiency. <b>MLA</b> (multi-head latent attention, DeepSeek-V2) is a more recent variant of the same idea.</p>
+<p><b>Grouped-query attention (GQA; Ainslie et al. 2023)</b> interpolates: \(g\) KV heads with \(1\lt g\lt h\). It is a simple knob for expressiveness (key-query ratio) versus inference efficiency. <b>MLA</b> (multi-head latent attention, DeepSeek-V2) is a more recent variant of the same idea.</p>
 <div id="l03-mqastep"></div>
 <script>
 (function(){
@@ -4000,7 +4001,7 @@ V.calc('#l04-dsacalc',{title:'Per-token decode attention cost: dense vs DSA (rel
 <ul>
 <li><b>MHA</b>: \(h_{kv}=h\), one KV pair per query head.</li>
 <li><b>MQA</b>: \(h_{kv}=1\), all query heads share one K and V. Cache shrinks by \(h\), quality drops a little.</li>
-<li><b>GQA</b>: \(h_{kv}=g\) with \(1<g<h\), groups of query heads share a KV head. In the GQA paper's T5-XXL numbers (below), GQA-8 is nearly as fast as MQA at near-MHA quality.</li>
+<li><b>GQA</b>: \(h_{kv}=g\) with \(1\lt g\lt h\), groups of query heads share a KV head. In the GQA paper's T5-XXL numbers (below), GQA-8 is nearly as fast as MQA at near-MHA quality.</li>
 <li><b>MLA</b> (DeepSeek-V2): cache a low-rank latent \(c_t^{KV}\) (plus a small RoPE key) and reconstruct per-head K and V from it.</li>
 </ul>
 <figure class="fig"><img class="zoom" loading="lazy" src="images/mla-schema.png" alt="MHA, GQA, MQA and MLA side by side, showing which tensors are cached during inference"><figcaption><b class="fignum">Figure 4.7.</b> MHA caches every head's K and V; GQA caches one per group; MQA caches a single K,V; MLA caches one compressed latent per token and projects it up to per-head K and V (figure from the DeepSeek-V2 paper).</figcaption></figure>
@@ -5188,7 +5189,7 @@ for i = 1..V:
     y_i = exp(x_i - m_V) / d_V</code></pre>
 </details>
 
-<p>The key identity is \(d_j = d_{j-1}\, e^{m_{j-1} - m_j} + e^{x_j - m_j}\). If the max did not change, the factor \(e^{m_{j-1}-m_j}\) is 1 and the sum simply grows. If a new, larger value arrives, the old sum (computed relative to the old max) is multiplied by \(e^{m_{j-1}-m_j} < 1\) to re-express it relative to the new max. This telescopes, so the final \(d_V\) equals \(\sum_j e^{x_j - m_V}\) exactly. The same rescaling applies to the output, which is what makes the attention output exact.</p>
+<p>The key identity is \(d_j = d_{j-1}\, e^{m_{j-1} - m_j} + e^{x_j - m_j}\). If the max did not change, the factor \(e^{m_{j-1}-m_j}\) is 1 and the sum simply grows. If a new, larger value arrives, the old sum (computed relative to the old max) is multiplied by \(e^{m_{j-1}-m_j} \lt  1\) to re-express it relative to the new max. This telescopes, so the final \(d_V\) equals \(\sum_j e^{x_j - m_V}\) exactly. The same rescaling applies to the output, which is what makes the attention output exact.</p>
 
 <h3>Putting it together: the forward pass</h3>
 
@@ -8943,7 +8944,7 @@ assert intensity == B*T</code></pre></details>
 <p>It has no dependence on \(B\) or \(D\). Plugging in the two stages:</p>
 <ul>
 <li><b>Prefill</b> (\(T = S\)): \(I = S/2\). Large for long prompts, so compute-bound.</li>
-<li><b>Generation</b> (\(T = 1\)): \(I = S/(S+1) < 1\). Always memory-bound, and batching cannot help.</li>
+<li><b>Generation</b> (\(T = 1\)): \(I = S/(S+1) \lt  1\). Always memory-bound, and batching cannot help.</li>
 </ul>
 
 <details class="more"><summary>Source code: attention intensity</summary>
@@ -9373,7 +9374,7 @@ x_approx = (x_quant - zero_point) * scale  # Dequantize @inspect x_approx</code>
 <div class="callout key"><b>Key property: the output is an exact sample from the target</b><p>The method is lossless, not approximate. Accept each draft token \(x\) with probability \(\min(1, q(x)/p(x))\). When rejected, resample from the residual \((q - p)_+\), normalized. The marginal distribution of the output token is exactly \(q\).</p></div>
 
 <h3>Proof by example: two tokens {A, B}</h3>
-<p>Let the target be \([q(A), q(B)]\) and the draft \([p(A), p(B)]\). Suppose the draft oversamples A, so \(p(A) > q(A)\), which forces \(p(B) < q(B)\). The residual \(\max(q - p, 0)\) is then \([0, 1]\) (after normalization by the rejected mass). The probability of emitting each token:</p>
+<p>Let the target be \([q(A), q(B)]\) and the draft \([p(A), p(B)]\). Suppose the draft oversamples A, so \(p(A) > q(A)\), which forces \(p(B) \lt  q(B)\). The residual \(\max(q - p, 0)\) is then \([0, 1]\) (after normalization by the rejected mass). The probability of emitting each token:</p>
 <ul>
 <li>\(P[\text{emit } A] = p(A) \cdot \dfrac{q(A)}{p(A)} + p(B) \cdot 1 \cdot 0 = q(A)\). A is kept with probability \(q(A)/p(A)\) when drafted; it is never resampled.</li>
 <li>\(P[\text{emit } B] = p(B) \cdot 1 + p(A)\left(1 - \dfrac{q(A)}{p(A)}\right) \cdot 1 = q(B)\). B is accepted when drafted, plus the rejected A mass that resamples to B.</li>
@@ -14823,7 +14824,7 @@ V.calc('#l17-logitmem',{title:'Logit-matrix memory: global softmax vs chunked si
 <p><b>LLaVA</b> (Large Language and Vision Assistant, <a href="https://arxiv.org/abs/2304.08485">Liu et al., 2023</a>) is the template most open VLMs still follow. <b>Vision encoder: CLIP ViT-L/14. Text decoder: Vicuna</b> (LLaMA fine-tuned on ShareGPT conversations, <a href="https://www.lmsys.org/blog/2023-03-30-vicuna/">blog</a>). The two are glued by a single <b>linear projection \(W\)</b>. Flamingo's cross-attention and Q-former are more complex alternatives.</p>
 <figure class="fig"><img class="zoom" loading="lazy" src="images/llava-architecture.png" alt="LLaVA architecture"><figcaption><b class="fignum">Figure 17.8.</b> Image X<sub>v</sub> goes through the vision encoder to Z<sub>v</sub>, then the projection W gives visual tokens H<sub>v</sub>. These are concatenated with the instruction tokens H<sub>q</sub>, and the language model f<sub>φ</sub> generates the answer X<sub>a</sub>.</figcaption></figure>
 \[
-\mathbf Z_v=g(\mathbf X_v),\qquad \mathbf H_v=\mathbf W\mathbf Z_v,\qquad p(\mathbf X_a\mid \mathbf X_v,\mathbf X_q)=\prod_{k=1}^{L}p_\phi\big(x_k\mid \mathbf H_v,\mathbf H_q,\mathbf X_{a,<k}\big)
+\mathbf Z_v=g(\mathbf X_v),\qquad \mathbf H_v=\mathbf W\mathbf Z_v,\qquad p(\mathbf X_a\mid \mathbf X_v,\mathbf X_q)=\prod_{k=1}^{L}p_\phi\big(x_k\mid \mathbf H_v,\mathbf H_q,\mathbf X_{a,\lt k}\big)
 \]
 <p>The loss is the usual next-token cross-entropy on the <em>answer</em> tokens; the image tokens are simply a prefix in the LM's context.</p>
 <pre><code>Zv = clip_vit(images)                     # [B, N, 1024] patch (grid) features of the ViT
