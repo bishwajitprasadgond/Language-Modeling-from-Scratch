@@ -165,7 +165,8 @@ em{font-style:italic}
 .vchip{width:auto;height:auto;padding:2px 9px 2px 7px;font-size:.72rem;display:inline-flex;gap:6px;align-items:center;border:1px solid var(--rule-soft);color:var(--ink-soft);border-radius:12px}
 .vchip i{display:inline-block;width:10px;height:10px;border-radius:50%}
 .vchip.off{opacity:.45;text-decoration:line-through}
-.viz .vbody{width:100%}
+.viz .vbody{width:100%;overflow-x:auto;overflow-y:hidden}
+.viz .cchart{overflow-x:auto;overflow-y:hidden}
 svg.vsvg{display:block;width:100%;height:auto;margin:0 auto;overflow:visible;font-family:var(--font-mono)}
 svg.vsvg .grid{stroke:var(--rule-soft);stroke-width:1;opacity:.55}
 svg.vsvg .axl{stroke:var(--ink-mute);stroke-width:1}
@@ -288,6 +289,10 @@ h1.lec::before{content:attr(data-lec)}
 h1.lec{margin-top:2.6em}
 .eq{overflow-x:auto}
 @media(max-width:700px){.crow{flex-wrap:wrap}.crow .cl{flex-basis:100%}}
+
+/* keep wide math from forcing the page to scroll sideways on phones */
+main{overflow-x:clip}
+mjx-container:not([display=true]){max-width:100%;overflow-x:auto;overflow-y:hidden;vertical-align:middle}
 
 </style>
 <script>
